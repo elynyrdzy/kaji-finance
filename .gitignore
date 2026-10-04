@@ -1,0 +1,45 @@
+# ==========================================
+# FLUTTER
+# ==========================================
+
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.omo
+.codegraph
+
+build/
+
+# ==========================================
+# ANDROID
+# ==========================================
+
+upload-keystore.base64
+android/.gradle/
+android/local.properties
+android/key.properties
+*.jks
+*.keystore
+
+# ==========================================
+# ENV - secrets lokal, jangan commit
+# ==========================================
+
+# .env (JANGAN commit — berisi secret lokal seperti KAJI_SUPABASE_KEY)
+.env
+.env.local
+
+# ==========================================
+# IDE
+# ==========================================
+
+.idea/
+*.iml
+
+# ==========================================
+# TEMPORARY
+# ==========================================
+
+*.log
+.DS_Store

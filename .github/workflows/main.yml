@@ -1,0 +1,165 @@
+name: Kaji Finance - Flutter APK Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+  workflow_dispatch:
+
+concurrency:
+  group: flutter-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Signed APKs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: stable
+          cache: true
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Check Flutter
+        run: |
+          flutter --version
+          dart --version
+          flutter doctor -v
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Check Dart Format
+        run: dart format --set-exit-if-changed .
+
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+
+      - name: Decode Android Keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          test -n "$ANDROID_KEYSTORE_BASE64"
+
+          mkdir -p "$HOME/.android"
+
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" \
+            | tr -d '[:space:]' \
+            | base64 --decode \
+            > "$HOME/.android/upload-keystore.jks"
+
+          chmod 600 "$HOME/.android/upload-keystore.jks"
+
+          test -s "$HOME/.android/upload-keystore.jks"
+
+      - name: Create key.properties
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+
+          {
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "storeFile=$HOME/.android/upload-keystore.jks"
+          } > android/key.properties
+
+          chmod 600 android/key.properties
+
+      - name: Verify Keystore
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+
+          keytool -list \
+            -keystore "$HOME/.android/upload-keystore.jks" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" \
+            > /dev/null
+
+      - name: Build Split APKs
+        run: |
+          flutter build apk \
+            --release \
+            --split-per-abi \
+            --obfuscate \
+            --split-debug-info=build/debug-info-split
+
+      - name: Build Universal APK
+        run: |
+          flutter build apk \
+            --release \
+            --obfuscate \
+            --split-debug-info=build/debug-info-universal
+
+      - name: Prepare APK Artifacts
+        run: |
+          set -euo pipefail
+
+          mkdir -p artifacts/split
+          mkdir -p artifacts/universal
+
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+            artifacts/split/kaji-finance-arm64-v8a-release.apk
+
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+            artifacts/split/kaji-finance-armeabi-v7a-release.apk
+
+          if [ -f build/app/outputs/flutter-apk/app-x86_64-release.apk ]; then
+            cp build/app/outputs/flutter-apk/app-x86_64-release.apk \
+              artifacts/split/kaji-finance-x86_64-release.apk
+          fi
+
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            artifacts/universal/kaji-finance-universal-release.apk
+
+      - name: Remove Signing Files
+        if: always()
+        run: |
+          rm -f android/key.properties
+          rm -f "$HOME/.android/upload-keystore.jks"
+
+      - name: Upload Split APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaji-finance-split-apks
+          path: artifacts/split/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Universal APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaji-finance-universal-apk
+          path: artifacts/universal/kaji-finance-universal-release.apk
+          if-no-files-found: error
+          retention-days: 14

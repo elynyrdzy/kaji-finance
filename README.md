@@ -146,4 +146,4 @@ Aplikasi bukan layanan bank, bukan dompet digital, dan tidak memindahkan uang se
 
 ## Lisensi
 
-Informasi lisensi mengikuti berkas lisensi yang tersedia di repository.
+ [LICENSE](LICENSE).
